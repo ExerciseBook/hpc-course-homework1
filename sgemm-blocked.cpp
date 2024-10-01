@@ -27,7 +27,6 @@ static void print_array(float* a, int length) {
     std::cout << std::endl;
 }
 
-
 static void print_matrix(float* matrix, int stride, int m, int n) {
     for (int i = 0; i < m; ++i) {
         for (int j = 0; j < n; ++j) {
@@ -63,16 +62,6 @@ static void pack_right_B(int K, int stride, float* B, float* packed_B) {
 }
 
 void do_mul_square(int n, int strideA, int strideB, int strideC, float* A, float* B, float* C) {
-    // for (int i = 0; i < n; i++) {
-    //     for (int j = 0; j < n; j++) {
-    //         float sum = C[i * strideC + j];
-    //         for (int k = 0; k < n; k++) {
-    //             sum += A[i * strideA + k] * B[j * strideB + k];
-    //         }
-    //         C[i * strideC + j] = sum;
-    //     }
-    // }
-
     for (int i = 0; i < 4; ++i) {
         for (int j = 0; j < 4; ++j) {
             float cij = C[i + j * strideC];
@@ -89,22 +78,12 @@ int newM, newN, newK;
 
 static void do_block(
         // clang-format off
-  int M, int N, int K, 
-  int strideA, int strideB, int strideC,
-  float *A, float *B, float *C, 
-  float *packed_A, float *packed_B, int should_pack_B
+        int M, int N, int K,
+        int strideA, int strideB, int strideC,
+        float *A, float *B, float *C,
+        float *packed_A, float *packed_B, int should_pack_B
         // clang-format on
 ) {
-    // for (int i = 0; i < M; ++i) {
-    //     for (int j = 0; j < N; ++j) {
-    //         float cij = C[i + j * strideC];
-    //         for (int k = 0; k < K; ++k) {
-    //             cij += A[i + k * strideA] * B[k + j * strideB];
-    //         }
-    //         C[i + j * strideC] = cij;
-    //     }
-    // }
-
     int j;
     for (j = 0; j + UNROLL_NUM <= N; j += UNROLL_NUM) {
         if (should_pack_B) {
@@ -132,7 +111,6 @@ int should_padding(int m, int n, int& new_m_ptr, int& new_n_ptr) {
     return m != new_m_ptr || n != new_n_ptr;
 }
 
-// M行 N列
 float* get_padding_matrix(int stride, int m, int n, int new_m, int new_n, const float* A) {
     // std::cout
     // << "m: " << m << ", "
@@ -226,13 +204,13 @@ void custom_sgemm(int M, int K, int N, float* A, float* B, float* C) {
 
             // clang-format off
             do_block(
-                M, N, K, 
-                newM, newK, newM, 
-                padding_A + i + k * newM, 
-                padding_B + k,
-                padding_C + i,
-                
-                packed_A, packed_B, i == 0
+                    M, N, K,
+                    newM, newK, newM,
+                    padding_A + i + k * newM,
+                    padding_B + k,
+                    padding_C + i,
+
+                    packed_A, packed_B, i == 0
             );
             // clang-format on
         }
