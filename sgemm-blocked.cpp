@@ -60,18 +60,72 @@ static void pack_right_B(int K, int stride, float* B, float* packed_B) {
         dst += 4;
     }
 }
-
 void do_mul_square(int n, int strideA, int strideB, int strideC, float* A, float* B, float* C) {
-    for (int i = 0; i < 4; ++i) {
-        for (int j = 0; j < 4; ++j) {
-            float cij = C[i + j * strideC];
-            for (int k = 0; k < n; ++k) {
-                cij += A[i + k * strideA] * B[j + k * strideB];
-                // std::cout << i + k * strideA << ", " << j + k * strideB << std::endl;
-            }
-            C[i + j * strideC] = cij;
-        }
+    float c00 = C[0 + 0 * strideC];
+    float c01 = C[0 + 1 * strideC];
+    float c02 = C[0 + 2 * strideC];
+    float c03 = C[0 + 3 * strideC];
+    float c10 = C[1 + 0 * strideC];
+    float c11 = C[1 + 1 * strideC];
+    float c12 = C[1 + 2 * strideC];
+    float c13 = C[1 + 3 * strideC];
+    float c20 = C[2 + 0 * strideC];
+    float c21 = C[2 + 1 * strideC];
+    float c22 = C[2 + 2 * strideC];
+    float c23 = C[2 + 3 * strideC];
+    float c30 = C[3 + 0 * strideC];
+    float c31 = C[3 + 1 * strideC];
+    float c32 = C[3 + 2 * strideC];
+    float c33 = C[3 + 3 * strideC];
+
+    for (int k = 0; k < n; k++) {
+        float a0k = A[0 + k * strideA];
+        float a1k = A[1 + k * strideA];
+        float a2k = A[2 + k * strideA];
+        float a3k = A[3 + k * strideA];
+
+        float b0k = B[0 + k * strideB];
+        float b1k = B[1 + k * strideB];
+        float b2k = B[2 + k * strideB];
+        float b3k = B[3 + k * strideB];
+
+        c00 += a0k * b0k;
+        c01 += a0k * b1k;
+        c02 += a0k * b2k;
+        c03 += a0k * b3k;
+
+        c10 += a1k * b0k;
+        c11 += a1k * b1k;
+        c12 += a1k * b2k;
+        c13 += a1k * b3k;
+
+        c20 += a2k * b0k;
+        c21 += a2k * b1k;
+        c22 += a2k * b2k;
+        c23 += a2k * b3k;
+
+        c30 += a3k * b0k;
+        c31 += a3k * b1k;
+        c32 += a3k * b2k;
+        c33 += a3k * b3k;
     }
+
+    C[0 + 0 * strideC] = c00;
+    C[0 + 1 * strideC] = c01;
+    C[0 + 2 * strideC] = c02;
+    C[0 + 3 * strideC] = c03;
+    C[1 + 0 * strideC] = c10;
+    C[1 + 1 * strideC] = c11;
+    C[1 + 2 * strideC] = c12;
+    C[1 + 3 * strideC] = c13;
+    C[2 + 0 * strideC] = c20;
+    C[2 + 1 * strideC] = c21;
+    C[2 + 2 * strideC] = c22;
+    C[2 + 3 * strideC] = c23;
+    C[3 + 0 * strideC] = c30;
+    C[3 + 1 * strideC] = c31;
+    C[3 + 2 * strideC] = c32;
+    C[3 + 3 * strideC] = c33;
 }
 
 int newM, newN, newK;
