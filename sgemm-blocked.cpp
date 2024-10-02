@@ -20,17 +20,19 @@ void do_block(
     float* packed_B
         // clang-format on
 ) {
-    for (int i = 0; i < M; ++i) {
-        for (int j = 0; j < N; ++j) {
+    for (int j = 0; j < N; ++j) {
+        for (int i = 0; i < M; ++i) {
             float cij = C(i, j);
             for (int k = 0; k < K; ++k) {
-                cij += A(i, k) * B(k, j);
+                // cij += A(i, k) * B[k + strideB * j] ;
+                cij += A(i, k) * packed_B[j + k * BLOCK_N];
             }
             C(i, j) = cij;
         }
     }
 }
 
+// 原来B的 i行j列 被打包到了 j行i列
 void packB(float* dst, int row, int width, int stride, float* src) {
     for (int i = 0; i < row; i++) {
         for (int j = 0; j < width; j++) {
@@ -60,8 +62,9 @@ void custom_sgemm(int M, int K, int N, float* A, float* B, float* C) {
     // 遍历 B 的每一行
     for (int n = 0; n < N; n += BLOCK_N) {
         for (int k = 0; k < K; k += BLOCK_K) {
-            packB(packed_B, BLOCK_K, BLOCK_N, strideC, &C(k, n));
-
+            packB(packed_B, BLOCK_K, BLOCK_N, strideB, &B(k, n));
+            // print_matrix(&B(k, n), strideB, BLOCK_K, BLOCK_N);
+            // print_matrix(packed_B, BLOCK_K, BLOCK_N, BLOCK_K);
 
             for (int m = 0; m < M; m += BLOCK_M) {
                 int M0 = min(BLOCK_M, M - m);

@@ -5,6 +5,8 @@ list(APPEND CMAKE_PREFIX_PATH "/home/software/spack/opt/spack/linux-rhel7-cascad
 set(CMAKE_C_COMPILER "/home/software/spack/opt/spack/linux-rhel7-cascadelake/gcc-10.4.0/intel-oneapi-compilers-2022.2.1-w67pvho2kggj4ggx3hsihwior5gkqwn5/compiler/2022.2.1/linux/bin/intel64/icc")
 set(CMAKE_CXX_COMPILER "/home/software/spack/opt/spack/linux-rhel7-cascadelake/gcc-10.4.0/intel-oneapi-compilers-2022.2.1-w67pvho2kggj4ggx3hsihwior5gkqwn5/compiler/2022.2.1/linux/bin/intel64/icpc")
 
+set(CMAKE_BUILD_TYPE "Release")
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lpthread -lm -diag-disable=10441 -Ofast -xHost -march=native -qopt-report=5 -static-libstdc++ -fno-alias -ffast-math -mavx512f -mavx512dq")
 
@@ -23,10 +25,10 @@ endif ()
 
 # Set MKL variables manually
 set(MKL_LIBRARIES
-#    "/home/software/spack/opt/spack/linux-rhel7-cascadelake/gcc-10.4.0/intel-oneapi-mkl-2022.2.1-mq6qsk6obdy5xj3z5oq7jhej4rc533yy/mkl/2022.2.1/lib/intel64/libmkl_intel_ilp64.so"
-#    "/home/software/spack/opt/spack/linux-rhel7-cascadelake/gcc-10.4.0/intel-oneapi-mkl-2022.2.1-mq6qsk6obdy5xj3z5oq7jhej4rc533yy/mkl/2022.2.1/lib/intel64/libmkl_core.so"
-#    "/home/software/spack/opt/spack/linux-rhel7-cascadelake/gcc-10.4.0/intel-oneapi-mkl-2022.2.1-mq6qsk6obdy5xj3z5oq7jhej4rc533yy/mkl/2022.2.1/lib/intel64/libmkl_intel_thread.so"
-#    "/home/software/spack/opt/spack/linux-rhel7-cascadelake/gcc-10.4.0/intel-oneapi-mkl-2022.2.1-mq6qsk6obdy5xj3z5oq7jhej4rc533yy/compiler/latest/linux/compiler/lib/intel64_lin/libiomp5.so"
+    # "/home/software/spack/opt/spack/linux-rhel7-cascadelake/gcc-10.4.0/intel-oneapi-mkl-2022.2.1-mq6qsk6obdy5xj3z5oq7jhej4rc533yy/mkl/2022.2.1/lib/intel64/libmkl_intel_ilp64.so"
+    # "/home/software/spack/opt/spack/linux-rhel7-cascadelake/gcc-10.4.0/intel-oneapi-mkl-2022.2.1-mq6qsk6obdy5xj3z5oq7jhej4rc533yy/mkl/2022.2.1/lib/intel64/libmkl_core.so"
+    # "/home/software/spack/opt/spack/linux-rhel7-cascadelake/gcc-10.4.0/intel-oneapi-mkl-2022.2.1-mq6qsk6obdy5xj3z5oq7jhej4rc533yy/mkl/2022.2.1/lib/intel64/libmkl_intel_thread.so"
+    # "/home/software/spack/opt/spack/linux-rhel7-cascadelake/gcc-10.4.0/intel-oneapi-mkl-2022.2.1-mq6qsk6obdy5xj3z5oq7jhej4rc533yy/compiler/latest/linux/compiler/lib/intel64_lin/libiomp5.so"
 )
 
 add_executable(naive sgemm-naive.cpp benchmark.cpp)
