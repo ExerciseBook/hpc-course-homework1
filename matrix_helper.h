@@ -22,7 +22,7 @@ void inline print_matrix(float* matrix, int stride, int m, int n) {
     std::cout << std::endl;
 }
 
-#define matidx(M, i, j) M[i + stride##M * j] 
+#define matidx(M, i, j) M[(i) + stride##M * (j)] 
 #define A(i, j) matidx(A, i, j)
 #define B(i, j) matidx(B, i, j)
 #define C(i, j) matidx(C, i, j)

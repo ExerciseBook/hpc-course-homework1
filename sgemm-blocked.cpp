@@ -1,15 +1,16 @@
 #include "matrix_config.h"
 #include "matrix_helper.h"
 #include <immintrin.h>
+#include <omp.h>
 #include <stdexcept>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <xmmintrin.h>
 
 const char* sgemm_desc = "Simple blocked sgemm.";
-
 
 void do_block(
         // clang-format off
@@ -20,11 +21,36 @@ void do_block(
         float* packed_A
         // clang-format on
 ) {
-    for (int i = 0; i < M; ++i) {
-        for (int j = 0; j < N; ++j) {
+    for (int j = 0; j < N; ++j) {
+        int i = 0;
+
+        for (; i + 1 < M; i += 2) {
+            int ip1 = i + 1;
+            int ip2 = i + 1;
+            int ip3 = i + 1;
+
+            float cij = C(i, j);
+            float cip1j = C(ip1, j);
+            float cip2j = C(ip2, j);
+            float cip3j = C(ip3, j);
+
+            for (int k = 0; k < K; ++k) {
+                cij += packed_A[k + i * BLOCK_K] * B[k + strideB * j];
+                cip1j += packed_A[k + ip1 * BLOCK_K] * B[k + strideB * j];
+                cip2j += packed_A[k + ip2 * BLOCK_K] * B[k + strideB * j];
+                cip3j += packed_A[k + ip3 * BLOCK_K] * B[k + strideB * j];
+            }
+
+            C(i, j) = cij;
+            C(ip1, j) = cip1j;
+            C(ip2, j) = cip2j;
+            C(ip3, j) = cip3j;
+        }
+
+        for (; i < M; ++i) {
             float cij = C(i, j);
             for (int k = 0; k < K; ++k) {
-                // 所以 A的 i行k列 被映射到了 packB的 k行i列
+                // 所以 A的 i行k列 被映射到了 packA的 k行i列
                 // cij += A[i + strideA* k]* B[k + strideB * j] ;
                 cij += packed_A[k + i * BLOCK_K] * B[k + strideB * j];
             }
@@ -33,14 +59,58 @@ void do_block(
     }
 }
 
+#define _MM_TRANSPOSE8_PS(row0, row1, row2, row3, row4, row5, row6, row7)                                              \
+    do {                                                                                                               \
+        __m256 __t0, __t1, __t2, __t3, __t4, __t5, __t6, __t7;                                                         \
+        __m256 __tt0, __tt1, __tt2, __tt3, __tt4, __tt5, __tt6, __tt7;                                                 \
+        __t0 = _mm256_unpacklo_ps(row0, row1);                                                                         \
+        __t1 = _mm256_unpackhi_ps(row0, row1);                                                                         \
+        __t2 = _mm256_unpacklo_ps(row2, row3);                                                                         \
+        __t3 = _mm256_unpackhi_ps(row2, row3);                                                                         \
+        __t4 = _mm256_unpacklo_ps(row4, row5);                                                                         \
+        __t5 = _mm256_unpackhi_ps(row4, row5);                                                                         \
+        __t6 = _mm256_unpacklo_ps(row6, row7);                                                                         \
+        __t7 = _mm256_unpackhi_ps(row6, row7);                                                                         \
+        __tt0 = _mm256_shuffle_ps(__t0, __t2, _MM_SHUFFLE(1, 0, 1, 0));                                                \
+        __tt1 = _mm256_shuffle_ps(__t0, __t2, _MM_SHUFFLE(3, 2, 3, 2));                                                \
+        __tt2 = _mm256_shuffle_ps(__t1, __t3, _MM_SHUFFLE(1, 0, 1, 0));                                                \
+        __tt3 = _mm256_shuffle_ps(__t1, __t3, _MM_SHUFFLE(3, 2, 3, 2));                                                \
+        __tt4 = _mm256_shuffle_ps(__t4, __t6, _MM_SHUFFLE(1, 0, 1, 0));                                                \
+        __tt5 = _mm256_shuffle_ps(__t4, __t6, _MM_SHUFFLE(3, 2, 3, 2));                                                \
+        __tt6 = _mm256_shuffle_ps(__t5, __t7, _MM_SHUFFLE(1, 0, 1, 0));                                                \
+        __tt7 = _mm256_shuffle_ps(__t5, __t7, _MM_SHUFFLE(3, 2, 3, 2));                                                \
+        row0 = _mm256_permute2f128_ps(__tt0, __tt4, 0x20);                                                             \
+        row1 = _mm256_permute2f128_ps(__tt1, __tt5, 0x20);                                                             \
+        row2 = _mm256_permute2f128_ps(__tt2, __tt6, 0x20);                                                             \
+        row3 = _mm256_permute2f128_ps(__tt3, __tt7, 0x20);                                                             \
+        row4 = _mm256_permute2f128_ps(__tt0, __tt4, 0x31);                                                             \
+        row5 = _mm256_permute2f128_ps(__tt1, __tt5, 0x31);                                                             \
+        row6 = _mm256_permute2f128_ps(__tt2, __tt6, 0x31);                                                             \
+        row7 = _mm256_permute2f128_ps(__tt3, __tt7, 0x31);                                                             \
+    } while (0)
+
+// 把 src 的 height 行 width 列，其 stride 为 stride
+// 转置为 dst 的 width 行 height 列，其 stride 为 width
 // 原来A的 i行j列 被打包到了 j行i列
-void packA(float* dst, int row, int width, int stride, float* src) {
-    for (int i = 0; i < row; i++) {
+void packA(float* dst, int height, int width, int stride, float* src) {
+    for (int i = 0; i < height; i++) {
         for (int j = 0; j < width; j++) {
             dst[width * i + j] = src[stride * j + i];
         }
     }
 }
+
+// 256 之后，大概率 B 也要 pack
+// 把 src 的 height 行 width 列，其 stride 为 stride
+// 复制为 dst 的 height 行 width 列，其 stride 为 height
+// 原来B的 i行j列 被打包到了 i行j列
+// void packB(float* dst, int height, int width, int stride, float* src) {
+//     for (int i = 0; i < height; i++) {
+//         for (int j = 0; j < width; j++) {
+//             dst[height * i + j] = src[stride * i + j];
+//         }
+//     }
+// }
 
 void custom_sgemm(int M, int K, int N, float* A, float* B, float* C) {
     // A
