@@ -24,10 +24,10 @@ void do_block(
     for (int j = 0; j < N; ++j) {
         int i = 0;
 
-        for (; i + 1 < M; i += 2) {
+        for (; i + 3 < M; i += 4) {
             int ip1 = i + 1;
-            int ip2 = i + 1;
-            int ip3 = i + 1;
+            int ip2 = i + 2;
+            int ip3 = i + 3;
 
             float cij = C(i, j);
             float cip1j = C(ip1, j);
@@ -99,18 +99,6 @@ void packA(float* dst, int height, int width, int stride, float* src) {
         }
     }
 }
-
-// 256 之后，大概率 B 也要 pack
-// 把 src 的 height 行 width 列，其 stride 为 stride
-// 复制为 dst 的 height 行 width 列，其 stride 为 height
-// 原来B的 i行j列 被打包到了 i行j列
-// void packB(float* dst, int height, int width, int stride, float* src) {
-//     for (int i = 0; i < height; i++) {
-//         for (int j = 0; j < width; j++) {
-//             dst[height * i + j] = src[stride * i + j];
-//         }
-//     }
-// }
 
 void custom_sgemm(int M, int K, int N, float* A, float* B, float* C) {
     // A
