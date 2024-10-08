@@ -12,6 +12,8 @@
 
 const char* sgemm_desc = "Simple blocked sgemm.";
 
+#define UNROLLING_LANE 16
+
 void do_block(
         // clang-format off
         int M, int K, int N,
@@ -25,6 +27,7 @@ void do_block(
         int i = 0;
 
         for (; i + 3 < M; i += 4) {
+            // std::cout << "j: " << j << ", i:" << i << std::endl;
             int ip1 = i + 1;
             int ip2 = i + 2;
             int ip3 = i + 3;
@@ -35,10 +38,13 @@ void do_block(
             float cip3j = C(ip3, j);
 
             for (int k = 0; k < K; ++k) {
-                cij += packed_A[k + i * BLOCK_K] * B[k + strideB * j];
-                cip1j += packed_A[k + ip1 * BLOCK_K] * B[k + strideB * j];
-                cip2j += packed_A[k + ip2 * BLOCK_K] * B[k + strideB * j];
-                cip3j += packed_A[k + ip3 * BLOCK_K] * B[k + strideB * j];
+                // 所以 A的 i行k列 被映射到了 packA的 ((i / 4) * K + k) * 4 + i % 4
+                auto p = ((i / 4) * K + k) * 4;
+                // std::cout << "p:" << ((i / 4) * K + k) * 4 << ", packed_A[p]:" << packed_A[p] << std::endl;
+                cij += packed_A[p] * B[k + strideB * j];
+                cip1j += packed_A[p + 1] * B[k + strideB * j];
+                cip2j += packed_A[p + 2] * B[k + strideB * j];
+                cip3j += packed_A[p + 3] * B[k + strideB * j];
             }
 
             C(i, j) = cij;
@@ -50,52 +56,57 @@ void do_block(
         for (; i < M; ++i) {
             float cij = C(i, j);
             for (int k = 0; k < K; ++k) {
-                // 所以 A的 i行k列 被映射到了 packA的 k行i列
-                // cij += A[i + strideA* k]* B[k + strideB * j] ;
-                cij += packed_A[k + i * BLOCK_K] * B[k + strideB * j];
+                cij += packed_A[ ((i / 4) * K + k) * 4 + i % 4] * B[k + strideB * j];
             }
             C(i, j) = cij;
         }
     }
 }
 
-#define _MM_TRANSPOSE8_PS(row0, row1, row2, row3, row4, row5, row6, row7)                                              \
-    do {                                                                                                               \
-        __m256 __t0, __t1, __t2, __t3, __t4, __t5, __t6, __t7;                                                         \
-        __m256 __tt0, __tt1, __tt2, __tt3, __tt4, __tt5, __tt6, __tt7;                                                 \
-        __t0 = _mm256_unpacklo_ps(row0, row1);                                                                         \
-        __t1 = _mm256_unpackhi_ps(row0, row1);                                                                         \
-        __t2 = _mm256_unpacklo_ps(row2, row3);                                                                         \
-        __t3 = _mm256_unpackhi_ps(row2, row3);                                                                         \
-        __t4 = _mm256_unpacklo_ps(row4, row5);                                                                         \
-        __t5 = _mm256_unpackhi_ps(row4, row5);                                                                         \
-        __t6 = _mm256_unpacklo_ps(row6, row7);                                                                         \
-        __t7 = _mm256_unpackhi_ps(row6, row7);                                                                         \
-        __tt0 = _mm256_shuffle_ps(__t0, __t2, _MM_SHUFFLE(1, 0, 1, 0));                                                \
-        __tt1 = _mm256_shuffle_ps(__t0, __t2, _MM_SHUFFLE(3, 2, 3, 2));                                                \
-        __tt2 = _mm256_shuffle_ps(__t1, __t3, _MM_SHUFFLE(1, 0, 1, 0));                                                \
-        __tt3 = _mm256_shuffle_ps(__t1, __t3, _MM_SHUFFLE(3, 2, 3, 2));                                                \
-        __tt4 = _mm256_shuffle_ps(__t4, __t6, _MM_SHUFFLE(1, 0, 1, 0));                                                \
-        __tt5 = _mm256_shuffle_ps(__t4, __t6, _MM_SHUFFLE(3, 2, 3, 2));                                                \
-        __tt6 = _mm256_shuffle_ps(__t5, __t7, _MM_SHUFFLE(1, 0, 1, 0));                                                \
-        __tt7 = _mm256_shuffle_ps(__t5, __t7, _MM_SHUFFLE(3, 2, 3, 2));                                                \
-        row0 = _mm256_permute2f128_ps(__tt0, __tt4, 0x20);                                                             \
-        row1 = _mm256_permute2f128_ps(__tt1, __tt5, 0x20);                                                             \
-        row2 = _mm256_permute2f128_ps(__tt2, __tt6, 0x20);                                                             \
-        row3 = _mm256_permute2f128_ps(__tt3, __tt7, 0x20);                                                             \
-        row4 = _mm256_permute2f128_ps(__tt0, __tt4, 0x31);                                                             \
-        row5 = _mm256_permute2f128_ps(__tt1, __tt5, 0x31);                                                             \
-        row6 = _mm256_permute2f128_ps(__tt2, __tt6, 0x31);                                                             \
-        row7 = _mm256_permute2f128_ps(__tt3, __tt7, 0x31);                                                             \
-    } while (0)
-
-// 把 src 的 height 行 width 列，其 stride 为 stride
-// 转置为 dst 的 width 行 height 列，其 stride 为 width
-// 原来A的 i行j列 被打包到了 j行i列
-void packA(float* dst, int height, int width, int stride, float* src) {
-    for (int i = 0; i < height; i++) {
-        for (int j = 0; j < width; j++) {
-            dst[width * i + j] = src[stride * j + i];
+// dst 大小为 BLOCK_M * BLOCK_K 这么大
+// src 是一个数组，他存储的内容为 A E I M B F J N C G K O D H L P Q U Y 3 R V Z 4 S W 1 5 T X 2 6
+// src 的内容解释为
+// A B C D Q R S T
+// E F G H U V W X
+// I J K L Y Z 1 2
+// M N O P 3 4 5 6
+//
+// dst 的目标内容为
+// A E I M B F J N C G K O D H L P Q U Y 3 R V Z 4 S W 1 5 T X 2 6
+//
+// 可以看到，dst 的意思是把 src 按照 4 行 4 行展开
+// 行,列 -> dst 下标
+//
+// 当 src 的行列不能被4整除时我们这样操作
+// src 是一个数组，他存储的内容为 A E I B F J C G K D H L M O Q N P R
+// src 的内容解释为
+// A B C D M N 0 0
+// E F G H O P 0 0
+// I J K L Q R 0 0
+// 0 0 0 0 0 0 0 0
+//
+// dst 的目标内容为
+// A E I 0 B F J 0 C G K 0 D H L 0 M O Q 0 N P R 0 0 0 0 0 0 0 0 0
+//
+// 一个混合的例子
+// src 是一个数组，他存储的内容为 A E I B F J C G K D H L M O Q N P R
+// src 的内容解释为
+// A B C D 3 4 0 0
+// E F G H 5 6 0 0
+// I J K L 7 8 0 0
+// M N O P 9 a 0 0
+// Q R S T b c 0 0
+// U V W X d e 0 0
+// Y Z 1 2 f g 0 0
+// 0 0 0 0 0 0 0 0
+//
+// dst 的目标内容为
+// A E I M B F J N C G K O D H L P 3 5 7 9 4 6 8 a 0 0 0 0 0 0 0 0 Q U Y Z R V Z 0 S W 1 0 T X 2 0 b d f 0 c e g 0 0 0 0 0 0 0 0 0
+void packA(float* dst, int srcStride, int srcHeight, int srcWidth, float* src) {
+    for (int i = 0; i < srcHeight; i++) {
+        for (int j = 0; j < srcWidth; j++) {
+            dst[((i / 4) * srcWidth + j) * 4 + i % 4] = src[srcStride * j + i];
+            // dst[srcWidth * i + j] = src[srcStride * j + i];
         }
     }
 }
@@ -128,8 +139,8 @@ void custom_sgemm(int M, int K, int N, float* A, float* B, float* C) {
         int K0 = min(BLOCK_K, K - k);
         for (int m = 0; m < M; m += BLOCK_M) {
             int M0 = min(BLOCK_M, M - m);
-            packA(packed_A, BLOCK_M, BLOCK_K, strideA, &A(m, k));
-            // print_matrix(&A(k, m), strideA, BLOCK_M, BLOCK_K);
+            packA(packed_A, strideA, M0, K0, &A(m, k));
+            // print_matrix(&A(k, m), strideA, M0, K0);
             // print_matrix(packed_A, BLOCK_K, BLOCK_K, BLOCK_M);
 
             for (int n = 0; n < N; n += BLOCK_N) {
@@ -144,4 +155,6 @@ void custom_sgemm(int M, int K, int N, float* A, float* B, float* C) {
 #else
     free(packed_A);
 #endif
+
+    // throw std::runtime_error("");
 }
