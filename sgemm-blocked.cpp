@@ -130,6 +130,8 @@ void packA(float* dst, int srcStride, int srcHeight, int srcWidth, float* src) {
     }
 }
 
+float packed_A[BLOCK_K * BLOCK_M];
+
 void custom_sgemm(int M, int K, int N, float* A, float* B, float* C) {
     // A
     //  M行 K列
@@ -143,17 +145,18 @@ void custom_sgemm(int M, int K, int N, float* A, float* B, float* C) {
     //  M行 N列
     auto strideC = M;
 
-#if WIN32
-    float* packed_A = (float*) _aligned_malloc(BLOCK_M * BLOCK_K * sizeof(float), 4096);
-    if (!packed_A) {
-        throw std::runtime_error("Can not align malloc packed pool!");
-    }
-#else
-    float* packed_A = nullptr;
-    if (posix_memalign((void**) &packed_A, 4096, BLOCK_M * BLOCK_K * sizeof(float)) != 0) {
-        throw std::runtime_error("Can not align malloc packed pool!");
-    }
-#endif
+// #if WIN32
+//     float* packed_A = (float*) _aligned_malloc(BLOCK_M * BLOCK_K * sizeof(float), 4096);
+//     if (!packed_A) {
+//         throw std::runtime_error("Can not align malloc packed pool!");
+//     }
+// #else
+//     float* packed_A = nullptr;
+//     if (posix_memalign((void**) &packed_A, 4096, BLOCK_M * BLOCK_K * sizeof(float)) != 0) {
+//         throw std::runtime_error("Can not align malloc packed pool!");
+//     }
+// #endif
+
     for (int k = 0; k < K; k += BLOCK_K) {
         int K0 = min(BLOCK_K, K - k);
         for (int m = 0; m < M; m += BLOCK_M) {
@@ -169,11 +172,11 @@ void custom_sgemm(int M, int K, int N, float* A, float* B, float* C) {
         }
     }
 
-#if WIN32
-    _aligned_free(packed_A);
-#else
-    free(packed_A);
-#endif
+// #if WIN32
+//     _aligned_free(packed_A);
+// #else
+//     free(packed_A);
+// #endif
 
     // throw std::runtime_error("");
 }
