@@ -26,37 +26,23 @@ void do_block(
     for (int j = 0; j < N; ++j) {
         int i = 0;
 
-        for (; i + 3 < M; i += 4) {
-            // std::cout << "j: " << j << ", i:" << i << std::endl;
-            int ip1 = i + 1;
-            int ip2 = i + 2;
-            int ip3 = i + 3;
-
-            float cij = C(i, j);
-            float cip1j = C(ip1, j);
-            float cip2j = C(ip2, j);
-            float cip3j = C(ip3, j);
+        for (; i + UNROLLING_LANE <= M; i += UNROLLING_LANE) {
+            __m512 mmCij = _mm512_load_ps(&C(i, j));
 
             for (int k = 0; k < K; ++k) {
-                // 所以 A的 i行k列 被映射到了 packA的 ((i / 4) * K + k) * 4 + i % 4
-                auto p = ((i / 4) * K + k) * 4;
-                // std::cout << "p:" << ((i / 4) * K + k) * 4 << ", packed_A[p]:" << packed_A[p] << std::endl;
-                cij += packed_A[p] * B[k + strideB * j];
-                cip1j += packed_A[p + 1] * B[k + strideB * j];
-                cip2j += packed_A[p + 2] * B[k + strideB * j];
-                cip3j += packed_A[p + 3] * B[k + strideB * j];
+                auto p = ((i / UNROLLING_LANE) * K + k) * UNROLLING_LANE;
+                __m512 a_packed = _mm512_load_ps(&packed_A[p]);
+                __m512 b = _mm512_set1_ps(B[k + strideB * j]);
+                mmCij = _mm512_fmadd_ps(a_packed, b, mmCij);
             }
-
-            C(i, j) = cij;
-            C(ip1, j) = cip1j;
-            C(ip2, j) = cip2j;
-            C(ip3, j) = cip3j;
+            _mm512_store_ps(&C(i, j), mmCij);
         }
 
         for (; i < M; ++i) {
             float cij = C(i, j);
             for (int k = 0; k < K; ++k) {
-                cij += packed_A[ ((i / 4) * K + k) * 4 + i % 4] * B[k + strideB * j];
+                cij += packed_A[((i / UNROLLING_LANE) * K + k) * UNROLLING_LANE + i % UNROLLING_LANE] *
+                       B[k + strideB * j];
             }
             C(i, j) = cij;
         }
@@ -103,10 +89,14 @@ void do_block(
 // dst 的目标内容为
 // A E I M B F J N C G K O D H L P 3 5 7 9 4 6 8 a 0 0 0 0 0 0 0 0 Q U Y Z R V Z 0 S W 1 0 T X 2 0 b d f 0 c e g 0 0 0 0 0 0 0 0 0
 void packA(float* dst, int srcStride, int srcHeight, int srcWidth, float* src) {
-    for (int i = 0; i < srcHeight; i++) {
-        for (int j = 0; j < srcWidth; j++) {
-            dst[((i / 4) * srcWidth + j) * 4 + i % 4] = src[srcStride * j + i];
-            // dst[srcWidth * i + j] = src[srcStride * j + i];
+    for (int j = 0; j < srcWidth; j++) {
+        int i = 0;
+        for (; i + UNROLLING_LANE <= srcHeight; i += UNROLLING_LANE) {
+            __m512 lane = _mm512_load_ps(&src[srcStride * j + i]);
+            _mm512_store_ps(&dst[((i / UNROLLING_LANE) * srcWidth + j) * UNROLLING_LANE], lane);
+        }
+        for (; i < srcHeight; i++) {
+            dst[((i / UNROLLING_LANE) * srcWidth + j) * UNROLLING_LANE + i % UNROLLING_LANE] = src[srcStride * j + i];
         }
     }
 }
