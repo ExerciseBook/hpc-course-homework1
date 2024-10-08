@@ -12,8 +12,6 @@
 
 const char* sgemm_desc = "Simple blocked sgemm.";
 
-#define UNROLLING_LANE 16
-
 void do_block(
         // clang-format off
         int M, int K, int N,
@@ -26,11 +24,10 @@ void do_block(
     for (int j = 0; j < N; ++j) {
         int i = 0;
 
-        for (; i + UNROLLING_LANE <= M; i += UNROLLING_LANE) {
+        for (; i + 16 <= M; i += 16) {
             __m512 mmCij = _mm512_load_ps(&C(i, j));
-
             for (int k = 0; k < K; ++k) {
-                auto p = ((i / UNROLLING_LANE) * K + k) * UNROLLING_LANE;
+                auto p = ((i / 16) * K + k) * 16;
                 __m512 a_packed = _mm512_load_ps(&packed_A[p]);
                 __m512 b = _mm512_set1_ps(B[k + strideB * j]);
                 mmCij = _mm512_fmadd_ps(a_packed, b, mmCij);
@@ -38,11 +35,43 @@ void do_block(
             _mm512_store_ps(&C(i, j), mmCij);
         }
 
+        for (; i + 8 <= M; i += 8) {
+            __m256 mmCij = _mm256_load_ps(&C(i, j));
+            for (int k = 0; k < K; ++k) {
+                auto p = ((i / 16) * K + k) * 16;
+                if (i % 16 >= 8) {
+                    p += 8;
+                }
+                __m256 a_packed = _mm256_load_ps(&packed_A[p]);
+                __m256 b = _mm256_set1_ps(B[k + strideB * j]);
+                mmCij = _mm256_fmadd_ps(a_packed, b, mmCij);
+            }
+            _mm256_store_ps(&C(i, j), mmCij);
+        }
+
+        for (; i + 4 <= M; i += 4) {
+            __m128 mmCij = _mm_load_ps(&C(i, j));
+            for (int k = 0; k < K; ++k) {
+                auto p = ((i / 16) * K + k) * 16;
+                if (i % 16 >= 12) {
+                    p += 12;
+                } else if (i % 16 >= 8) {
+                    p += 8;
+                } else if (i % 16 >= 4) {
+                    p += 4;
+                } else {
+                };
+                __m128 a_packed = _mm_load_ps(&packed_A[p]);
+                __m128 b = _mm_set_ps1(B[k + strideB * j]);
+                mmCij = _mm_fmadd_ps(a_packed, b, mmCij);
+            }
+            _mm_store_ps(&C(i, j), mmCij);
+        }
+
         for (; i < M; ++i) {
             float cij = C(i, j);
             for (int k = 0; k < K; ++k) {
-                cij += packed_A[((i / UNROLLING_LANE) * K + k) * UNROLLING_LANE + i % UNROLLING_LANE] *
-                       B[k + strideB * j];
+                cij += packed_A[((i / 16) * K + k) * 16 + i % 16] * B[k + strideB * j];
             }
             C(i, j) = cij;
         }
@@ -91,12 +120,12 @@ void do_block(
 void packA(float* dst, int srcStride, int srcHeight, int srcWidth, float* src) {
     for (int j = 0; j < srcWidth; j++) {
         int i = 0;
-        for (; i + UNROLLING_LANE <= srcHeight; i += UNROLLING_LANE) {
+        for (; i + 16 <= srcHeight; i += 16) {
             __m512 lane = _mm512_load_ps(&src[srcStride * j + i]);
-            _mm512_store_ps(&dst[((i / UNROLLING_LANE) * srcWidth + j) * UNROLLING_LANE], lane);
+            _mm512_store_ps(&dst[((i / 16) * srcWidth + j) * 16], lane);
         }
         for (; i < srcHeight; i++) {
-            dst[((i / UNROLLING_LANE) * srcWidth + j) * UNROLLING_LANE + i % UNROLLING_LANE] = src[srcStride * j + i];
+            dst[((i / 16) * srcWidth + j) * 16 + i % 16] = src[srcStride * j + i];
         }
     }
 }
