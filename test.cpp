@@ -65,6 +65,12 @@ void fill(float* p, int n) {
     }
 }
 
+void myfill(float* p, int n) {
+    for (int i = 0; i < n; ++i) {
+        p[i] = i; // Uniformly distributed over [-1, 1]
+    }
+}
+
 void absolute_value(float* p, int n) {
     for (int i = 0; i < n; ++i) p[i] = fabs(p[i]);
 }
@@ -76,8 +82,8 @@ int main(int argc, char** argv) {
     /* Test sizes should highlight performance dips at multiples of certain powers-of-two */
     float initial = randint(1, 10);
 
-    int test_sizes_M[] = {2};
-    int test_sizes_K[] = {3};
+    int test_sizes_M[] = {16};
+    int test_sizes_K[] = {1024};
     int test_sizes_N[] = {4};
 
     int nsizes = sizeof(test_sizes_M) / sizeof(test_sizes_M[0]);
@@ -128,7 +134,7 @@ int main(int argc, char** argv) {
             /*  compute Mflop/s rate */
             Gflops_s = 2.e-9 * n_iterations * m * k * n / seconds;
         }
-        printf("Size: (%dx%d), (%dx%d)\tGflop/s: %.3g (%d iter, %.3f seconds)\n",
+        printf("Size: (%dx%d), (%dx%d)\tGflop/s: %.7g (%d iter, %.3f seconds)\n",
                m,
                k,
                k,

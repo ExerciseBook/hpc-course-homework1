@@ -12,6 +12,125 @@
 
 const char* sgemm_desc = "Simple blocked sgemm.";
 
+using vf = __m512;
+
+template<size_t N, class T>
+std::array<vf, N> loadN(float *ptr, ptrdiff_t step, T loader) {
+    std::array<vf, N> result{};
+#pragma unroll
+    for (size_t i = 0; i < N; ++i) {
+        result[i] = loader(ptr + i * step);
+    }
+    return result;
+}
+
+template<size_t N, class V, class T>
+void storeN(float *ptr, ptrdiff_t step, std::array<V, N> value, T storer) {
+#pragma unroll
+    for (size_t i = 0; i < N; ++i) {
+        storer(ptr + i * step, value[i]);
+    }
+}
+
+// A              B^T
+//  1  2  3  4    a e i m
+//  5  6  7  8    b f j n
+//  9 10 11 12    c g k o
+// 13 14 15 16    d h l p
+
+// Elementwise product
+// Left rotate 1 element for each N
+//  1a+ 5b+ 9c+13d    2e+ 6f+10g+14h    3i+ 7j+11k+15l    4m+ 8n+12o+16p
+//  1e+ 5f+ 9g+13h    2i+ 6j+10k+14l    3m+ 7n+11o+15p    4a+ 8b+12c+16d
+//  1i+ 5j+ 9k+13l    2m+ 6n+10o+14p    ...
+//  1m+ 5n+ 9o+13p    2a+ 6b+10c+14d    ...
+
+// Swap to correct location with 2 (*4) blend
+// a b c d   a c c a   a a a a
+// b c d a   b b d d   b b b b
+// c d a b   c a a c   c c c c
+// d a b c   d d b b   d d d d
+
+
+//  Compute a M=16 N=4 tile
+template<size_t K>
+void do_tile(int strideA, int strideB, int strideC,
+             float *A, float *B, float *C) {
+    // A: 16 x K
+    // B: K x 4
+    // C: 16 x 4
+
+    static_assert(K % 4 == 0);
+
+    using vfx4 = std::array<vf, 4>;
+
+    vfx4 c{};
+    // TODO: unroll this one reasonably
+    for (size_t k = 0; k < K; k += 4) {
+        // Load A
+        vfx4 a = loadN<4>(A + k * strideA, strideA, _mm512_loadu_ps);
+
+        // Load B
+        vfx4 b = loadN<4>(B + k, strideB, [](float* ptr) {
+            return _mm512_broadcast_f32x4(_mm_load_ps(ptr));
+        });
+
+        // B^T
+        vfx4 tmp = {
+                _mm512_castps_pd(_mm512_unpacklo_ps(b[0], b[1])),
+                _mm512_castps_pd(_mm512_unpacklo_ps(b[2], b[3])),
+                _mm512_castps_pd(_mm512_unpackhi_ps(b[0], b[1])),
+                _mm512_castps_pd(_mm512_unpackhi_ps(b[2], b[3]))
+        };
+        vfx4 bt = {
+                _mm512_castpd_ps(_mm512_unpacklo_pd(tmp[0], tmp[1])),
+                _mm512_castpd_ps(_mm512_unpackhi_pd(tmp[0], tmp[1])),
+                _mm512_castpd_ps(_mm512_unpacklo_pd(tmp[2], tmp[3])),
+                _mm512_castpd_ps(_mm512_unpackhi_pd(tmp[2], tmp[3]))
+        };
+
+        // FMA
+#pragma unroll
+        for (size_t ki = 0; ki < 4; ++ki) {
+#pragma unroll
+            for (size_t n = 0; n < 4; ++n) {
+                c[ki] = _mm512_fmadd_ps(a[n], bt[n], c[ki]);
+                bt[n] = _mm512_shuffle_ps(bt[n], bt[n], _MM_SHUFFLE(0,3,2,1));
+            }
+        }
+    }
+
+    // swap
+    __mmask16 mask1 = 0b1010101010101010;
+    __mmask16 mask2 = 0b0110011001100110;
+    __mmask16 mask3 = 0b1100110011001100;
+
+    vfx4 tmp1 = {
+            _mm512_mask_blend_ps(mask1, c[0], c[1]),
+            _mm512_mask_blend_ps(mask1, c[1], c[0]),
+            _mm512_mask_blend_ps(mask1, c[2], c[3]),
+            _mm512_mask_blend_ps(mask1, c[3], c[2]),
+    };
+
+    vfx4 tmp2 = {
+            _mm512_mask_blend_ps(mask2, tmp1[0], tmp1[2]),
+            _mm512_mask_blend_ps(mask3, tmp1[1], tmp1[3]),
+            _mm512_mask_blend_ps(mask2, tmp1[2], tmp1[0]),
+            _mm512_mask_blend_ps(mask3, tmp1[3], tmp1[1]),
+    };
+
+    auto ci = loadN<4>(C, strideC, _mm512_loadu_ps);
+
+    vfx4 co = {
+            _mm512_add_ps(ci[0], tmp2[0]),
+            _mm512_add_ps(ci[1], tmp2[1]),
+            _mm512_add_ps(ci[2], tmp2[2]),
+            _mm512_add_ps(ci[3], tmp2[3]),
+    };
+
+    storeN<4>(C, strideC, co, _mm512_storeu_ps);
+}
+
 void do_block(
         // clang-format off
         int M, int K, int N,
@@ -156,6 +275,9 @@ void custom_sgemm(int M, int K, int N, float* A, float* B, float* C) {
 //         throw std::runtime_error("Can not align malloc packed pool!");
 //     }
 // #endif
+
+    do_tile<1024>(strideA, strideB, strideC, A, B, C);
+    return;
 
     for (int k = 0; k < K; k += BLOCK_K) {
         int K0 = min(BLOCK_K, K - k);

@@ -1,21 +1,15 @@
 cmake_minimum_required(VERSION 3.29)
 project(homework1)
-list(APPEND CMAKE_PREFIX_PATH "/home/software/spack/opt/spack/linux-rhel7-cascadelake/gcc-10.4.0/")
-
-set(CMAKE_C_COMPILER "/home/software/spack/opt/spack/linux-rhel7-cascadelake/gcc-10.4.0/intel-oneapi-compilers-2022.2.1-w67pvho2kggj4ggx3hsihwior5gkqwn5/compiler/2022.2.1/linux/bin/intel64/icc")
-set(CMAKE_CXX_COMPILER "/home/software/spack/opt/spack/linux-rhel7-cascadelake/gcc-10.4.0/intel-oneapi-compilers-2022.2.1-w67pvho2kggj4ggx3hsihwior5gkqwn5/compiler/2022.2.1/linux/bin/intel64/icpc")
-
-set(CMAKE_BUILD_TYPE "Release")
 
 set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -lpthread -lm -diag-disable=10441 -Ofast -xHost -march=native -qopt-report=5 -static-libstdc++ -fno-alias -ffast-math -mavx512f -mavx512dq")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -march=native -ffast-math -mtune=native")
 
 # Find OpenBLAS
 find_package(OpenBLAS REQUIRED)
 if (NOT OpenBLAS_FOUND)
     message(FATAL_ERROR "OpenBLAS library not found")
 endif ()
-# set(OpenBLAS_LIBRARIES "/home/software/spack/opt/spack/linux-rhel7-cascadelake/gcc-10.4.0/openblas-0.3.21-2tqj345i5gukw4eh3nu3oy2hmjcdqvpn/lib/libopenblas.a")
+set(OpenBLAS_LIBRARIES OpenBLAS::OpenBLAS)
 
 # Find MKL
 #find_package(MKL REQUIRED)
