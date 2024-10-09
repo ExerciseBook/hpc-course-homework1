@@ -3,9 +3,9 @@
 # Your code must compile (with icc) with the given CFLAGS. You may experiment with the OPT variable to invoke additional compiler options.
 
 CC = icpc
-OPT = 
+OPT =
 CFLAGS = -Wall -DGETTIMEOFDAY -std=c99 $(OPT) -diag-disable=10441
-LDFLAGS = -Wall 
+LDFLAGS = -Wall
 # mkl is needed for blas implementation
 LDLIBS = -lpthread -lm -diag-disable=10441 -Ofast -xHost -march=native -qopt-report=5 -static-libstdc++ -fno-alias -ffast-math -mavx512f -mavx512dq
 
@@ -30,7 +30,7 @@ benchmark-blas : benchmark.o sgemm-blas.o
 benchmark-final : benchmark.o sgemm-blocked.o
 	$(CC) -o $@ $^ $(LDLIBS)
 
-%.o : %.c
+%.o : %.cpp
 	$(CC) -c $(CFLAGS) $<
 
 .PHONY : clean
